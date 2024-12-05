@@ -1,15 +1,17 @@
-require 'sidekiq'
-require_relative 'lock'
+# frozen_string_literal: true
+
+require "sidekiq"
+require_relative "lock"
 
 module SimpleUniqueJobs
   class ServerMiddleware
     include Sidekiq::ServerMiddleware
 
-    def call(_job_instance, job_payload, _queue)
+    def call(_job_instance, job_payload, _queue, &)
       lock = Lock.new(job_payload, Sidekiq.redis_pool)
 
       lock.unlock_enqueue
-      lock.if_runnable { yield }
+      lock.if_runnable(&)
     end
   end
 end

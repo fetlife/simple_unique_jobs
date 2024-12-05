@@ -1,4 +1,6 @@
-require 'sidekiq'
+# frozen_string_literal: true
+
+require "sidekiq"
 
 module SimpleUniqueJobs
   class TestWorker
@@ -7,7 +9,7 @@ module SimpleUniqueJobs
     sidekiq_options queue: "test", custom: "custom", lock_timeout: 10
 
     def perform
-      $stderr.puts "TestWorker"
+      warn "TestWorker"
     end
   end
 end

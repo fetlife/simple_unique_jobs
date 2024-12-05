@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_relative "simple_unique_jobs/version"
 require_relative "simple_unique_jobs/client_middleware"
 require_relative "simple_unique_jobs/server_middleware"
