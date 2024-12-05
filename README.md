@@ -16,13 +16,27 @@ Configuration: a single sidekiq_option key, `unique_for`, with subkeys:
   Default 0 (disabled).
 - `timeout`: (boolean) when set, the `running` timeout will be applied, and an
   exception will be raised if the job takes too long. Default false.
+- `unique_on`: (callable) if present, called with the job arguments, and the
+  result is hashed to determine uniqueness. Defaults to using the entire
+  arguments array.
 
 Example:
 
 ```ruby
 class MyJob
   include Sidekiq::Worker
-  sidekiq_options unique_for: { queued: 300, running: 10 }
+  sidekiq_options(
+    unique_for: {
+      queued: 300,   # prevent another job from getting enqueued for 300s
+                     # after this one is enqueued, or until it is performed
+      running: 10,   # prevent another job from starting for 10s after one
+                     # is started, or until it is performed
+      timeout: true, # kills a job if it takes more than 10s
+    },
+    unique_on: ->(args) { args.first }, # use only the first argument to
+                # determine uniqueness, instead of the entire arguments
+                # array
+  )
 
   def perform
     # ...
