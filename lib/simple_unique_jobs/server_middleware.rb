@@ -8,8 +8,9 @@ module SimpleUniqueJobs
     include Sidekiq::ServerMiddleware
 
     def call(_job_instance, job_payload, _queue, &)
-      lock = Lock.new(job_payload, Sidekiq.redis_pool)
+      return yield unless job_payload.key?('unique_key')
 
+      lock = Lock.new(job_payload, Sidekiq.redis_pool)
       lock.unlock_enqueue
       lock.if_runnable(&)
     end

@@ -1,10 +1,9 @@
 # frozen_string_literal: true
 
-require "murmurhash3"
 module SimpleUniqueJobs
   class Lock
     KEY_PREFIX = "unique"
-    KEY_PATTERN = "%<prefix>s:%<type>s:%<classname>s:%<hash>s"
+    KEY_PATTERN = "%<prefix>s:%<type>s:%<key>s"
 
     def initialize(job, redis_pool)
       @job = job
@@ -54,20 +53,8 @@ module SimpleUniqueJobs
       @running_unique_for ||= @job.dig("unique_for", "running").to_i
     end
 
-    def classname
-      @job["class"]
-    end
-
-    def args
-      @job["args"]
-    end
-
     def key_for(type)
-      format(KEY_PATTERN, prefix: KEY_PREFIX, type:, classname:, hash: args_hash)
-    end
-
-    def args_hash
-      @args_hash ||= MurmurHash3::V128.str_hexdigest(args.to_s)
+      format(KEY_PATTERN, prefix: KEY_PREFIX, type:, key: @job.fetch('unique_key'))
     end
   end
 end

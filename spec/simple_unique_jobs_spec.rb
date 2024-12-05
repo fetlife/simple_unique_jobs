@@ -9,21 +9,36 @@ TimeoutError = Class.new(StandardError)
 class TestWorker
   include Sidekiq::Worker
   @@worker_performed = []
+  @@worker_started = []
 
-  sidekiq_options queue: "test", unique_for: { queued: 10, running: 10 }
+  sidekiq_options queue: "test",
+    unique_for: { queued: 10, running: 10 },
+    unique_on: ->(args) { args.first }
 
-  def perform(arg)
-    @@worker_performed << arg
+  def perform(key, options = {})
+    @@worker_started << key
+    sleep options['wait'] if options['wait']
+  ensure
+    @@worker_performed << key
   end
 
   def self.performed
     @@worker_performed
   end
+
+  def self.started
+    @@worker_started
+  end
+
+  def self.clear
+    @@worker_performed.clear
+    @@worker_started.clear
+  end
 end
 
 RSpec.describe SimpleUniqueJobs do
+  # We need to reach inside Sidekiq internals to reset its state
   after do
-    # Reset Sidekiq state
     Sidekiq.instance_eval do
       %i[@config @config_blocks @frozen].each do |var|
         remove_instance_variable(var) if instance_variable_defined?(var)
@@ -69,16 +84,16 @@ RSpec.describe SimpleUniqueJobs do
     end
   end
 
-  context "with a worker" do
+  context "with a real Sidekiq executor" do
     let(:embedded_sidekiq) do
       Sidekiq.configure_embed do |c|
         c.queues = ["test"]
-        c.concurrency = 1
+        c.concurrency = 3
       end
     end
 
     before do
-      TestWorker.performed.clear
+      TestWorker.clear
       described_class.setup
       embedded_sidekiq.logger.level = Logger::ERROR
       embedded_sidekiq.run
@@ -95,39 +110,71 @@ RSpec.describe SimpleUniqueJobs do
       expect(TestWorker.performed).to eq(["foo"])
     end
 
-    it "does not run an already-enqueued job" do
-      TestWorker.perform_in(5, "foo")
-      TestWorker.perform_bulk([["foo"], ["bar"]])
-      wait_until { !TestWorker.performed.empty? }
-      expect(TestWorker.performed).to eq(["bar"])
+    context 'with enqueue lock only' do
+      before do
+        TestWorker.sidekiq_options unique_for: { queued: 10 }
+      end
+
+      it "does not run an already-enqueued job" do
+        TestWorker.perform_in(5, "foo")
+        TestWorker.perform_bulk([["foo"], ["bar"]])
+        wait_until { !TestWorker.performed.empty? }
+        expect(TestWorker.performed).to eq(["bar"])
+      end
+
+      it "runs identical jobs sequentially" do
+        TestWorker.perform_async("foo", "n" => 1)
+        wait_until { TestWorker.performed.length == 1 }
+        TestWorker.perform_async("foo", "n" => 2)
+        wait_until { TestWorker.performed.length == 2 }
+        expect(TestWorker.performed).to eq(%w[foo foo])
+      end
+
+      it "runs distinct jobs in parallel" do
+        TestWorker.perform_bulk([["foo", "n" => 1], ["bar", "n" => 2]])
+        wait_until { TestWorker.performed.length == 2 }
+        expect(TestWorker.performed).to match_array(%w[foo bar])
+      end
+
+      it "runs only one of identical jobs in parallel" do
+        TestWorker.perform_bulk([["foo", "n" => 1], ["foo", "n" => 2], ["bar", "n" => 3]])
+        wait_until { TestWorker.performed.length == 2 }
+        expect(TestWorker.performed).to match_array(%w[foo bar])
+      end
+
+      it "runs a job if the enqueue lock expires" do
+        TestWorker.perform_in(60, "foo")
+        Sidekiq.redis { |r| r.del(*r.keys("unique:q:*")) }
+        TestWorker.perform_async("foo")
+        wait_until { !TestWorker.performed.empty? }
+        expect(TestWorker.performed).to eq(["foo"])
+      end
     end
 
-    it "runs identical jobs sequentially" do
-      TestWorker.perform_async("foo")
-      wait_until { TestWorker.performed.length == 1 }
-      TestWorker.perform_async("foo")
-      wait_until { TestWorker.performed.length == 2 }
-      expect(TestWorker.performed).to eq(%w[foo foo])
-    end
+    context 'with running lock only' do
+      before { TestWorker.sidekiq_options unique_for: { running: 2 } }
 
-    it "runs distinct jobs in parallel" do
-      TestWorker.perform_bulk([["foo"], ["bar"]])
-      wait_until { TestWorker.performed.length == 2 }
-      expect(TestWorker.performed).to eq(%w[foo bar])
-    end
+      it "does not run an already-running job" do
+        TestWorker.perform_async("foo", "n" => 1, "wait" => 1)
+        wait_until { !TestWorker.started.empty? }
+        TestWorker.perform_async("foo", "n" => 2, "wait" => 1)
+        TestWorker.perform_async("bar")
+        wait_until { TestWorker.performed.length == 2 }
+        expect(TestWorker.performed).to match_array(%w[foo bar])
+      end
 
-    it "runs only one of identical jobs in parallel" do
-      TestWorker.perform_bulk([["foo"], ["foo"], ["bar"]])
-      wait_until { TestWorker.performed.length == 2 }
-      expect(TestWorker.performed).to eq(%w[foo bar])
-    end
+      context 'when a job runs too long' do
+        before { TestWorker.sidekiq_options unique_for: { running: 0.5 } }
 
-    it "runs a job if the enqueue lock expires" do
-      TestWorker.perform_in(60, "foo")
-      Sidekiq.redis { |r| r.del(*r.keys("unique:q:*")) }
-      TestWorker.perform_async("foo")
-      wait_until { !TestWorker.performed.empty? }
-      expect(TestWorker.performed).to eq(["foo"])
+        it 'runs jobs concurrently' do
+          TestWorker.perform_async("foo", "n" => 1, "wait" => 2)
+          wait_until { TestWorker.started.length > 0 }
+          sleep 0.6
+          TestWorker.perform_async("foo", "n" => 2, "wait" => 2)
+          wait_until { TestWorker.performed.length == 2 }
+          expect(TestWorker.performed).to match_array(%w[foo foo])
+        end
+      end
     end
   end
 end
