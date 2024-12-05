@@ -14,7 +14,6 @@ module SimpleUniqueJobs
     def if_enqueueable
       return if queued_unique_for > 0 && !lock("q", queued_unique_for)
 
-      # $stderr.puts "enqueueable: #{key_for('q')}"
       yield
     end
 
@@ -25,8 +24,6 @@ module SimpleUniqueJobs
     def if_runnable
       return yield if running_unique_for == 0
       return unless lock("r", running_unique_for)
-
-      # $stderr.puts "runnable: #{key_for('r')}"
 
       begin
         yield

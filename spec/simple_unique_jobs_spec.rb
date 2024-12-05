@@ -13,7 +13,6 @@ class TestWorker
   sidekiq_options queue: "test", unique_for: { queued: 10, running: 10 }
 
   def perform(arg)
-    # $stderr.puts "TestWorker: #{arg}"
     @@worker_performed << arg
   end
 
@@ -25,7 +24,6 @@ end
 RSpec.describe SimpleUniqueJobs do
   after do
     # Reset Sidekiq state
-    # $stderr.puts "Resetting Sidekiq state"
     Sidekiq.instance_eval do
       %i[@config @config_blocks @frozen].each do |var|
         remove_instance_variable(var) if instance_variable_defined?(var)
