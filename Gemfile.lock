@@ -91,6 +91,8 @@ GEM
     rubocop-performance (1.23.0)
       rubocop (>= 1.48.1, < 2.0)
       rubocop-ast (>= 1.31.1, < 2.0)
+    rubocop-rspec (3.2.0)
+      rubocop (~> 1.61)
     ruby-progressbar (1.13.0)
     shellany (0.0.1)
     sidekiq (7.3.6)
@@ -117,6 +119,7 @@ DEPENDENCIES
   rspec (~> 3.0)
   rubocop (~> 1.21)
   rubocop-performance (~> 1.23)
+  rubocop-rspec (~> 3.2)
   sidekiq (>= 6.0)
   simple_unique_jobs!
 

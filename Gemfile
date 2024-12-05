@@ -16,3 +16,5 @@ gem "rubocop", "~> 1.21"
 gem "sidekiq", ">= 6.0"
 
 gem "rubocop-performance", "~> 1.23"
+
+gem "rubocop-rspec", "~> 3.2"
