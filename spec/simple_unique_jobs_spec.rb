@@ -10,14 +10,19 @@ class TestWorker
   include Sidekiq::Worker
   @@worker_performed = []
   @@worker_started = []
+  @@worker_errored = [] # key, exception pairs
 
   sidekiq_options queue: "test",
+                  retry: false,
                   unique_for: { queued: 10, running: 10 },
                   unique_on: lambda(&:first)
 
   def perform(key, options = {})
     @@worker_started << key
     sleep options['wait'] if options['wait']
+  rescue StandardError => e
+    @@worker_errored << [key, e]
+    raise
   ensure
     @@worker_performed << key
   end
@@ -30,9 +35,14 @@ class TestWorker
     @@worker_started
   end
 
+  def self.errored
+    @@worker_errored
+  end
+
   def self.clear
     @@worker_performed.clear
     @@worker_started.clear
+    @@worker_errored.clear
   end
 end
 
@@ -173,6 +183,17 @@ RSpec.describe SimpleUniqueJobs do
           TestWorker.perform_async("foo", "n" => 2, "wait" => 2)
           wait_until { TestWorker.performed.length == 2 }
           expect(TestWorker.performed).to match_array(%w[foo foo])
+        end
+      end
+
+      context 'when timeout is enabled' do
+        before { TestWorker.sidekiq_options unique_for: { running: 1, timeout: true } }
+
+        it 'kills the job if it takes too long' do
+          TestWorker.perform_async("foo", "n" => 1, "wait" => 5)
+          wait_until { TestWorker.performed.any? }
+          expect(TestWorker.errored.first)
+            .to match(["foo", a_kind_of(SimpleUniqueJobs::Lock::TimeoutError)])
         end
       end
     end

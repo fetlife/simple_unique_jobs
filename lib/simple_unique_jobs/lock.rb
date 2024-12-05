@@ -2,6 +2,8 @@
 
 module SimpleUniqueJobs
   class Lock
+    TimeoutError = Class.new(StandardError)
+
     KEY_PREFIX = "unique"
     KEY_PATTERN = "%<prefix>s:%<type>s:%<key>s"
 
@@ -35,7 +37,7 @@ module SimpleUniqueJobs
 
     def lock(type, timeout)
       @redis_pool.with do |redis|
-        !!redis.set(key_for(type), "x", nx: true, ex: timeout)
+        !!redis.set(key_for(type), "x", nx: true, px: (timeout * 1e3).to_i)
       end
     end
 
@@ -48,19 +50,19 @@ module SimpleUniqueJobs
     def with_timeout(&)
       return yield unless running_timeout
 
-      Timeout::timeout(running_unique_for, &)
+      Timeout::timeout(running_unique_for, TimeoutError, &)
     end
 
     def queued_unique_for
-      @queued_unique_for ||= @job.dig("unique_for", "queued").to_i
+      @queued_unique_for ||= @job.dig("unique_for", "queued").to_f
     end
 
     def running_unique_for
-      @running_unique_for ||= @job.dig("unique_for", "running").to_i
+      @running_unique_for ||= @job.dig("unique_for", "running").to_f
     end
 
     def running_timeout
-      @running_timeout ||= @job.dig("unique_for", "timeout").to_f
+      @running_timeout ||= @job.dig("unique_for", "timeout")
     end
 
     def key_for(type)
