@@ -1027,3 +1027,7 @@ Style/OptionalBooleanParameter:
   Exclude:
     # Sidekiq doesn't want keyword arguments. https://github.com/mperham/sidekiq/issues/2372#issuecomment-458608612
     - "app/workers/**/*"
+RSpec/ExampleLength:
+  Max: 10
+RSpec/NestedGroups:
+  Max: 4
