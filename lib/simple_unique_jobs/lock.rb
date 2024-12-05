@@ -2,8 +2,6 @@
 
 module SimpleUniqueJobs
   class Lock
-    TimeoutError = Class.new(StandardError)
-
     KEY_PREFIX = "unique"
     KEY_PATTERN = "%<prefix>s:%<type>s:%<key>s"
 

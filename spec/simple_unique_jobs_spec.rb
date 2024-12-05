@@ -193,7 +193,7 @@ RSpec.describe SimpleUniqueJobs do
           TestWorker.perform_async("foo", "n" => 1, "wait" => 5)
           wait_until { TestWorker.performed.any? }
           expect(TestWorker.errored.first)
-            .to match(["foo", a_kind_of(SimpleUniqueJobs::Lock::TimeoutError)])
+            .to match(["foo", a_kind_of(SimpleUniqueJobs::TimeoutError)])
         end
       end
     end

@@ -5,6 +5,8 @@ require_relative "simple_unique_jobs/client_middleware"
 require_relative "simple_unique_jobs/server_middleware"
 
 module SimpleUniqueJobs
+  TimeoutError = Class.new(StandardError)
+
   class << self
     def setup
       Sidekiq.configure_server do |config|
