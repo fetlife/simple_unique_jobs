@@ -4,6 +4,9 @@ jobs:
   run-rspec-tests:
     runs-on: ubuntu-latest
     steps:
+      - uses: zhulik/redis-action@1.1.0
+        with:
+          redis version: '7'
       - uses: actions/checkout@v2
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
