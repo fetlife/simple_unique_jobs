@@ -1,4 +1,4 @@
-name: Run RSpec tests
+name: CI
 on: [push]
 jobs:
   run-rspec-tests:
