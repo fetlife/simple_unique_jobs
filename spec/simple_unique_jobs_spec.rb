@@ -12,8 +12,8 @@ class TestWorker
   @@worker_started = []
 
   sidekiq_options queue: "test",
-    unique_for: { queued: 10, running: 10 },
-    unique_on: ->(args) { args.first }
+                  unique_for: { queued: 10, running: 10 },
+                  unique_on: lambda(&:first)
 
   def perform(key, options = {})
     @@worker_started << key
@@ -131,13 +131,13 @@ RSpec.describe SimpleUniqueJobs do
       end
 
       it "runs distinct jobs in parallel" do
-        TestWorker.perform_bulk([["foo", "n" => 1], ["bar", "n" => 2]])
+        TestWorker.perform_bulk([["foo", { "n" => 1 }], ["bar", { "n" => 2 }]])
         wait_until { TestWorker.performed.length == 2 }
         expect(TestWorker.performed).to match_array(%w[foo bar])
       end
 
       it "runs only one of identical jobs in parallel" do
-        TestWorker.perform_bulk([["foo", "n" => 1], ["foo", "n" => 2], ["bar", "n" => 3]])
+        TestWorker.perform_bulk([["foo", { "n" => 1 }], ["foo", { "n" => 2 }], ["bar", { "n" => 3 }]])
         wait_until { TestWorker.performed.length == 2 }
         expect(TestWorker.performed).to match_array(%w[foo bar])
       end

@@ -14,6 +14,8 @@ Configuration: a single sidekiq_option key, `unique_for`, with subkeys:
   enqueued again. Default 0 (disabled).
 - `running`: (seconds) how long a job can run before it can be executed again.
   Default 0 (disabled).
+- `timeout`: (boolean) when set, the `running` timeout will be applied, and an
+  exception will be raised if the job takes too long. Default false.
 
 Example:
 

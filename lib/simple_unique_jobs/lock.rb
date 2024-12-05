@@ -20,12 +20,12 @@ module SimpleUniqueJobs
       unlock("q")
     end
 
-    def if_runnable
+    def if_runnable(&)
       return yield if running_unique_for == 0
       return unless lock("r", running_unique_for)
 
       begin
-        yield
+        with_timeout(&)
       ensure
         unlock("r")
       end
@@ -45,12 +45,22 @@ module SimpleUniqueJobs
       end
     end
 
+    def with_timeout(&)
+      return yield unless running_timeout
+
+      Timeout::timeout(running_unique_for, &)
+    end
+
     def queued_unique_for
       @queued_unique_for ||= @job.dig("unique_for", "queued").to_i
     end
 
     def running_unique_for
       @running_unique_for ||= @job.dig("unique_for", "running").to_i
+    end
+
+    def running_timeout
+      @running_timeout ||= @job.dig("unique_for", "timeout").to_f
     end
 
     def key_for(type)
