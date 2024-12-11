@@ -1,0 +1,10 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require "simple_unique_jobs"
+require "sidekiq"
+require "pry"
+
+opts = Pry::CLI.parse_options
+Pry::CLI.start(opts)
