@@ -20,7 +20,7 @@ class TestWorker
                   unique_for: { queued: 10.seconds, running: 10.seconds },
                   unique_on: lambda(&:first)
 
-  sidekiq_retry_in { |count,_e| count <= 0 ? 1.0 : :discard } # long retry delay so we can test stuff
+  sidekiq_retry_in { |count, _e| count <= 0 ? 1.0 : :discard } # long retry delay so we can test stuff
 
   def perform(key, options = {})
     @@worker_started << key
@@ -237,12 +237,11 @@ RSpec.describe SimpleUniqueJobs do
       context 'when retrying' do
         before { TestWorker.sidekiq_options retry: true, unique_for: { queued: 60, running: 60 } }
 
-        it 'does *not* keep queued lock while retrying' do
+        it 'does *not* keep queued lock while retrying' do # rubocop:disable RSpec/MultipleExpectations
           TestWorker.perform_async("foo", "n" => 1, "error" => 'hello')
           wait_until { TestWorker.performed.length == 1 }
           TestWorker.perform_async("foo", "n" => 2) # runs while waiting for retry
           wait_until { TestWorker.performed.length == 3 }
-
           expect(TestWorker.performed).to match_array(%w[foo foo foo])
           expect(Sidekiq::RetrySet.new.count).to eq(0)
         end
