@@ -3,6 +3,7 @@
 require "spec_helper"
 require "pry"
 require "sidekiq"
+require "active_support/core_ext/numeric/time"
 
 TimeoutError = Class.new(StandardError)
 
@@ -14,7 +15,7 @@ class TestWorker
 
   sidekiq_options queue: "test",
                   retry: false,
-                  unique_for: { queued: 10, running: 10 },
+                  unique_for: { queued: 10.seconds, running: 10.seconds },
                   unique_on: lambda(&:first)
 
   def perform(key, options = {})

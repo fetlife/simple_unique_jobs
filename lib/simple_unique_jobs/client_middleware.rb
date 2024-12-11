@@ -24,10 +24,5 @@ module SimpleUniqueJobs
       args_hash = MurmurHash3::V128.str_hexdigest(unique_args)
       job['unique_key'] = format('%<class>s:%<args_hash>s', class: job.fetch('class'), args_hash:)
     end
-
-    def job_unique_args(job)
-      unique_args_fn = job.delete("unique_on") || ->(args) { args }
-      unique_args_fn.call(job['args']).to_s
-    end
   end
 end
