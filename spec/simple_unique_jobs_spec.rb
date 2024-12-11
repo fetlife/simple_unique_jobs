@@ -3,6 +3,8 @@
 require "spec_helper"
 require "pry"
 require "sidekiq"
+require "sidekiq/api"
+require "sidekiq/scheduled"
 require "active_support/core_ext/numeric/time"
 
 TimeoutError = Class.new(StandardError)
@@ -18,9 +20,12 @@ class TestWorker
                   unique_for: { queued: 10.seconds, running: 10.seconds },
                   unique_on: lambda(&:first)
 
+  sidekiq_retry_in { |count,_e| count <= 0 ? 1.0 : :discard } # long retry delay so we can test stuff
+
   def perform(key, options = {})
     @@worker_started << key
     sleep options['wait'] if options['wait']
+    raise options['error'] if options['error']
   rescue StandardError => e
     @@worker_errored << [key, e]
     raise
@@ -47,6 +52,16 @@ class TestWorker
   end
 end
 
+# Sidekiq scheduler takes ages to start up, not ideal for testing - patch it
+Sidekiq::Scheduled::Poller.class_eval do
+  def initial_wait
+    @sleeper.pop(1.0)
+  rescue Timeout::Error
+  ensure
+    cleanup
+  end
+end
+
 RSpec.describe SimpleUniqueJobs do
   # We need to reach inside Sidekiq internals to reset its state
   after do
@@ -65,7 +80,7 @@ RSpec.describe SimpleUniqueJobs do
 
   def server_config = Sidekiq.configure_server { |config| config }
 
-  def wait_until(timeout: 5)
+  def wait_until(timeout: 10)
     start_time = Time.now
     until yield
       raise TimeoutError, "Execution expired" if (Time.now - start_time) > timeout
@@ -100,11 +115,13 @@ RSpec.describe SimpleUniqueJobs do
       Sidekiq.configure_embed do |c|
         c.queues = ["test"]
         c.concurrency = 3
+        c.average_scheduled_poll_interval = 0.5
       end
     end
 
     before do
       TestWorker.clear
+      TestWorker.sidekiq_options retry: false
       described_class.setup
       embedded_sidekiq.logger.level = Logger::ERROR
       embedded_sidekiq.run
@@ -188,13 +205,46 @@ RSpec.describe SimpleUniqueJobs do
       end
 
       context 'when timeout is enabled' do
-        before { TestWorker.sidekiq_options unique_for: { running: 1, timeout: true } }
+        before { TestWorker.sidekiq_options retry: true, unique_for: { running: 1, timeout: true } }
 
         it 'kills the job if it takes too long' do
           TestWorker.perform_async("foo", "n" => 1, "wait" => 5)
           wait_until { TestWorker.performed.any? }
+          expect(Sidekiq::RetrySet.new.count).to eq(1)
+        end
+
+        it 'retries the job' do
+          TestWorker.perform_async("foo", "n" => 1, "wait" => 5)
+          wait_until { TestWorker.performed.any? }
           expect(TestWorker.errored.first)
             .to match(["foo", a_kind_of(SimpleUniqueJobs::TimeoutError)])
+        end
+      end
+
+      context 'when scheduling' do
+        before { TestWorker.sidekiq_options unique_for: { queued: 1, running: 1 } }
+
+        it 'properly unlocks' do
+          TestWorker.perform_in(1, "foo")
+          TestWorker.perform_async("foo")
+          wait_until { TestWorker.performed.length == 1 }
+          TestWorker.perform_in(1, "foo")
+          wait_until { TestWorker.performed.length == 2 }
+          expect(TestWorker.performed).to match_array(%w[foo foo])
+        end
+      end
+
+      context 'when retrying' do
+        before { TestWorker.sidekiq_options retry: true, unique_for: { queued: 60, running: 60 } }
+
+        it 'does *not* keep queued lock while retrying' do
+          TestWorker.perform_async("foo", "n" => 1, "error" => 'hello')
+          wait_until { TestWorker.performed.length == 1 }
+          TestWorker.perform_async("foo", "n" => 2) # runs while waiting for retry
+          wait_until { TestWorker.performed.length == 3 }
+
+          expect(TestWorker.performed).to match_array(%w[foo foo foo])
+          expect(Sidekiq::RetrySet.new.count).to eq(0)
         end
       end
     end
