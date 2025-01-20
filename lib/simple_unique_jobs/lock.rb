@@ -8,6 +8,10 @@ module SimpleUniqueJobs
     def initialize(job, redis_pool)
       @job = job
       @redis_pool = redis_pool
+
+      # somehow when called from Rails, in the client middleware, keys do not
+      # get stringified.
+      job["unique_for"] = job["unique_for"]&.transform_keys(&:to_s)
     end
 
     def if_enqueueable
